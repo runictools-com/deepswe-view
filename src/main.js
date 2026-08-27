@@ -10,6 +10,7 @@ import {
 } from "./leaderboard-data.js";
 import { getMetricScale, getPassScaleMax, getPassScaleTicks } from "./chart-scale.js";
 import { getChartLayout } from "./chart-layout.js";
+import { buildStepPath } from "./chart-path.js";
 import { closeOpenMenus, isMenuInteraction } from "./menu-state.js";
 import { applyConfigSelection, applyModelSelection, capturePopoverScroll, restorePopoverScroll } from "./picker-state.js";
 
@@ -388,7 +389,10 @@ function renderChart() {
   ].join("");
   const lines = visibleGroups.map(([model, list]) => {
     if (list.length < 2) return "";
-    const path = list.map((row, index) => `${index === 0 ? "M" : "L"} ${x(metricValue(row)).toFixed(1)} ${y(row.pass).toFixed(1)}`).join(" ");
+    const path = buildStepPath(list.map((row) => ({
+      x: x(metricValue(row)).toFixed(1),
+      y: y(row.pass).toFixed(1),
+    })));
     const hoverRow = list.find((row) => labelConfigs.has(row.config)) ?? list[list.length - 1];
     const dimmed = activeModel && activeModel !== model;
     return `<g data-chart-group="${escapeHtml(model)}" data-chart-model="${escapeHtml(model)}" data-chart-config="${escapeHtml(hoverRow.config)}" style="opacity:${dimmed ? 0.55 : 1};filter:${dimmed ? "grayscale(1)" : "none"}"><path class="chart-line-hit" d="${path}"/><path class="chart-line" d="${path}" stroke="${chartSubColor(model)}"/></g>`;

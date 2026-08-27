@@ -7,6 +7,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "test:data": "node scripts/check-leaderboard-data.mjs",
+    "test:chart-hover-label": "node scripts/check-chart-hover-label.mjs",
     "test:chart-path": "node scripts/check-chart-path.mjs",
     "test:chart-scale": "node scripts/check-chart-scale.mjs",
     "test:menu": "node scripts/check-menu-state.mjs",

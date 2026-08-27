@@ -875,7 +875,7 @@ img {
 .chart-line-hit {
   fill: none;
   stroke: transparent;
-  stroke-width: 14;
+  stroke-width: 8;
   stroke-linecap: round;
   stroke-linejoin: round;
   pointer-events: stroke;

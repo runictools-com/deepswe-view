@@ -10,7 +10,7 @@ import {
 } from "./leaderboard-data.js";
 import { getMetricScale, getPassScaleMax, getPassScaleTicks } from "./chart-scale.js";
 import { getChartLayout } from "./chart-layout.js";
-import { buildStepPath } from "./chart-path.js";
+import { buildStepPath, buildStepSegments } from "./chart-path.js";
 import { closeOpenMenus, isMenuInteraction } from "./menu-state.js";
 import { applyConfigSelection, applyModelSelection, capturePopoverScroll, restorePopoverScroll } from "./picker-state.js";
 
@@ -243,6 +243,9 @@ function applyChartFocus() {
   chart.querySelectorAll("[data-chart-guide]").forEach((element) => {
     element.style.display = config && element.dataset.chartGuide === config ? "block" : "none";
   });
+  chart.querySelectorAll("[data-chart-hover-label]").forEach((element) => {
+    element.style.display = config && element.dataset.chartConfig === config ? "block" : "none";
+  });
 }
 
 function currentRows() {
@@ -387,16 +390,22 @@ function renderChart() {
     ...xScale.ticks.map((tick) => `<g><line class="chart-grid" x1="${x(tick)}" x2="${x(tick)}" y1="${margin.top}" y2="${margin.top + plotH}"/><text class="chart-tick" x="${x(tick)}" y="${margin.top + plotH + 18}" text-anchor="middle" font-size="${mobile ? 9.5 : 12}">${escapeHtml(metric.format(tick))}</text></g>`),
     ...yTicks.map((tick) => `<g><line class="chart-grid" x1="${margin.left}" x2="${margin.left + plotW}" y1="${y(tick)}" y2="${y(tick)}"/><text class="chart-tick" x="${margin.left - 10}" y="${y(tick) + 4}" text-anchor="end" font-size="${mobile ? 9.5 : 12}">${Math.round(tick * 100)}%</text></g>`),
   ].join("");
-  const lines = visibleGroups.map(([model, list]) => {
+  const renderedGroups = visibleGroups.map(([model, list]) => {
     if (list.length < 2) return "";
-    const path = buildStepPath(list.map((row) => ({
+    const points = list.map((row) => ({
+      config: row.config,
       x: x(metricValue(row)).toFixed(1),
       y: y(row.pass).toFixed(1),
-    })));
-    const hoverRow = list.find((row) => labelConfigs.has(row.config)) ?? list[list.length - 1];
+    }));
+    const path = buildStepPath(points);
+    const segments = buildStepSegments(points);
     const dimmed = activeModel && activeModel !== model;
-    return `<g data-chart-group="${escapeHtml(model)}" data-chart-model="${escapeHtml(model)}" data-chart-config="${escapeHtml(hoverRow.config)}" style="opacity:${dimmed ? 0.55 : 1};filter:${dimmed ? "grayscale(1)" : "none"}"><path class="chart-line-hit" d="${path}"/><path class="chart-line" d="${path}" stroke="${chartSubColor(model)}"/></g>`;
-  }).join("");
+    const style = `opacity:${dimmed ? 0.55 : 1};filter:${dimmed ? "grayscale(1)" : "none"}`;
+    const hits = segments.map(({ config, d }) => `<path class="chart-line-hit" data-chart-model="${escapeHtml(model)}" data-chart-config="${escapeHtml(config)}" d="${d}" style="${style}"/>`).join("");
+    return { line: `<g data-chart-group="${escapeHtml(model)}" data-chart-model="${escapeHtml(model)}" style="${style}"><path class="chart-line" pointer-events="none" d="${path}" stroke="${chartSubColor(model)}"/></g>`, hits };
+  }).filter(Boolean);
+  const lines = renderedGroups.map(({ line }) => line).join("");
+  const lineHits = renderedGroups.map(({ hits }) => hits).join("");
   const guides = rows.map((row) => {
     const color = chartModelColor(row.model);
     const px = x(metricValue(row));
@@ -421,7 +430,17 @@ function renderChart() {
     const dimmed = activeModel && activeModel !== row.model;
     return `<g class="chart-point" data-chart-model="${escapeHtml(row.model)}" data-chart-config="${escapeHtml(row.config)}" style="opacity:${dimmed ? 0.55 : 1};filter:${dimmed ? "grayscale(1)" : "none"}"><text class="chart-label" x="${px + dx}" y="${py + dy}" text-anchor="${anchor}" fill="${family}">${escapeHtml(displayModel(row.model))}</text><text class="chart-effort-label" x="${px + dx}" y="${py + dy + 10}" text-anchor="${anchor}" fill="${family}">${escapeHtml(row.effort.toUpperCase())}</text></g>`;
   }).join("");
-  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Pass rate vs ${escapeHtml(metric.label)}" style="display:block"><text class="chart-title" x="${margin.left}" y="24" text-anchor="start" font-size="${mobile ? 12 : 14}" font-weight="600">DeepSWE score</text>${grid}<text class="chart-axis-label" x="${margin.left + plotW / 2}" y="${H - 14}" text-anchor="middle" font-size="${mobile ? 11 : 13}">${escapeHtml(metric.label)}</text><text class="chart-efficiency" x="${margin.left + plotW - 6}" y="${margin.top + 15}" text-anchor="end" font-size="${mobile ? 9 : 11}" font-style="italic">most efficient ↗</text>${lines}${guides}${points}${labelMarkup}</svg>`;
+  const hoverLabelMarkup = rows
+    .filter((row) => !labelConfigs.has(row.config))
+    .map((row) => {
+      const family = chartFamilyColor(row.family);
+      const px = x(metricValue(row));
+      const py = y(row.pass);
+      const dimmed = activeModel && activeModel !== row.model;
+      const visible = activeConfig === row.config;
+      return `<g class="chart-point chart-hover-label" data-chart-model="${escapeHtml(row.model)}" data-chart-config="${escapeHtml(row.config)}" data-chart-hover-label style="display:${visible ? "block" : "none"};opacity:${dimmed ? 0.55 : 1};filter:${dimmed ? "grayscale(1)" : "none"}"><text class="chart-effort-label" x="${px + 14}" y="${py + 4}" text-anchor="start" fill="${family}">${escapeHtml(row.effort.toUpperCase())}</text></g>`;
+    }).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Pass rate vs ${escapeHtml(metric.label)}" style="display:block"><text class="chart-title" x="${margin.left}" y="24" text-anchor="start" font-size="${mobile ? 12 : 14}" font-weight="600">DeepSWE score</text>${grid}<text class="chart-axis-label" x="${margin.left + plotW / 2}" y="${H - 14}" text-anchor="middle" font-size="${mobile ? 11 : 13}">${escapeHtml(metric.label)}</text><text class="chart-efficiency" x="${margin.left + plotW - 6}" y="${margin.top + 15}" text-anchor="end" font-size="${mobile ? 9 : 11}" font-style="italic">most efficient ↗</text>${lines}${guides}${points}${lineHits}${labelMarkup}${hoverLabelMarkup}</svg>`;
 }
 
 function renderChartControls() {
